@@ -1,105 +1,45 @@
-# -*- coding: utf-8 -*-
 """
+Zebrafish alignment
 
+Eleftherios Garyfallidis
 """
+import sys
 import numpy as np
+from glob import glob
 from os.path import expanduser, join
-from scipy.misc import imread
-import vtk
+from imageio import imread, imwrite
 from dipy.viz import actor, window, widget
-from dipy.align.imaffine import (transform_centers_of_mass,
-                                 AffineMap,
-                                 MutualInformationMetric,
-                                 AffineRegistration)
-from dipy.align.transforms import (TranslationTransform3D,
-                                   RigidTransform3D,
-                                   AffineTransform3D)
 
-from dipy.align.transforms import (TranslationTransform2D,
-                                   RigidTransform2D,
-                                   AffineTransform2D)
+from dipy.align.imaffine import transform_centers_of_mass
 
-from dipy.align.imwarp import SymmetricDiffeomorphicRegistration
-from dipy.align.imwarp import DiffeomorphicMap
-from dipy.align.metrics import CCMetric
-from dipy.segment.tissue import TissueClassifierHMRF
-from scipy.ndimage.interpolation import affine_transform, rotate
+from scipy.ndimage.interpolation import rotate, shift, affine_transform
+from scipy.ndimage.measurements import center_of_mass
 from os.path import basename
 
 
-def show_volume(vol, affine=np.eye(4), opacity=1.):
-
-    ren = window.Renderer()
-
-    shape = vol.shape
-
-    image_actor = actor.slicer(vol, affine)
-
-    slicer_opacity = opacity  # .6
-    image_actor.opacity(slicer_opacity)
-
-    ren.add(image_actor)
-
-    show_m = window.ShowManager(ren, size=(800, 700))
-    show_m.picker = vtk.vtkCellPicker()
-    show_m.picker.SetTolerance(0.002)
-
-    show_m.initialize()
-    show_m.iren.SetPicker(show_m.picker)
-    show_m.picker.Pick(10, 10, 0, ren)
-
-    def change_slice(obj, event):
-        z = int(np.round(obj.get_value()))
-        image_actor.display_extent(0, shape[0] - 1,
-                                   0, shape[1] - 1, z, z)
-        ren.reset_clipping_range()
-
-    slider = widget.slider(show_m.iren, show_m.ren,
-                           callback=change_slice,
-                           min_value=0,
-                           max_value=shape[2] - 1,
-                           value=shape[2] / 2,
-                           label="Move slice",
-                           right_normalized_pos=(.98, 0.6),
-                           size=(120, 0), label_format="%0.lf",
-                           color=(1., 1., 1.),
-                           selected_color=(0.86, 0.33, 1.))
-
-    global size
-    size = ren.GetSize()
-
-    def win_callback(obj, event):
-        global size
-        if size != obj.GetSize():
-
-            slider.place(ren)
-            size = obj.GetSize()
-
-    def annotate_pick(obj, event):
-        I, J, K = obj.GetCellIJK()
-
-        print('Value of voxel [%i, %i, %i]=%s' % (I, J, K, str(np.round(vol[I, J, K]))))
-        # print("Picking 3d position")
-        # print(obj.GetPickPosition())
-
-    show_m.picker.AddObserver("EndPickEvent", annotate_pick)
-    show_m.initialize()
-    show_m.add_window_callback(win_callback)
-    show_m.render()
-    show_m.start()
+def rot_pt(img, pt, theta):
+    # img[img<thresh]=0 #mask background
+    c_in = np.array(pt)
+    c_out = np.array(pt)
+    transform = np.array([[np.cos(theta), -1*np.sin(theta)], [np.sin(theta),np.cos(theta)]])
+    offset = c_in - c_out.dot(transform)
+    dst = affine_transform(
+            img, transform.T, order=2,
+            offset=offset, output_shape=img.shape, cval=0.0)
+    return dst
 
 
 def ssd_rotate_and_center(static, moving):
 
-    figure()
-    title('Before registration')
-    imshow(static + moving)
+    # figure()
+    # title('Before registration')
+    # imshow(static + moving)
 
     # TODO I can try rotating the image around its center of mass and then
     # apply the c_of_mass transform
 
     ssds = []
-    angles = range(0, 180)
+    angles = range(0, 360)
 
     for theta in angles:
 
@@ -120,104 +60,98 @@ def ssd_rotate_and_center(static, moving):
     return moved
 
 
-def affine_registration_2d(static, moving,
-                           static_grid2world,
-                           moving_grid2world,
-                           level_iters=[100],
-                           sigmas=[1.],
-                           factors=[1]):
-
-    c_of_mass = transform_centers_of_mass(static, static_grid2world,
-                                          moving, moving_grid2world)
-    transformed = c_of_mass.transform(moving)
-
-    nbins = 32
-    sampling_prop = None
-    metric = MutualInformationMetric(nbins, sampling_prop)
-
-    affreg = AffineRegistration(metric=metric,
-                                level_iters=level_iters,
-                                sigmas=sigmas,
-                                factors=factors)
-
-    transform = TranslationTransform2D()
-    params0 = None
-    starting_affine = c_of_mass.affine
-    translation = affreg.optimize(static, moving, transform, params0,
-                                  static_grid2world, moving_grid2world,
-                                  starting_affine=starting_affine)
-
-    transformed = translation.transform(moving)
-
-    transform = RigidTransform2D()
-    params0 = None
-    starting_affine = translation.affine
-    rigid = affreg.optimize(static, moving, transform, params0,
-                            static_grid2world, moving_grid2world,
-                            starting_affine=starting_affine)
-
-    transformed = rigid.transform(moving)
-
-    return transformed
-
-    """
-    transform = AffineTransform3D()
-    params0 = None
-    starting_affine = rigid.affine
-    affine = affreg.optimize(static, moving, transform, params0,
-                             static_grid2world, moving_grid2world,
-                             starting_affine=starting_affine)
-
-    moved = affine.transform(moving)
-
-    return moved
-    """
-
 def mask_zebrafish(data, thr):
     data[data < thr] = 0
     return data
 
 
-home = expanduser('~')
-dname = join(home, 'Data', 'zebrafish')
+#def debug_figure(data1, data2, data2_moved):
+#
+#    figure()
+#
+#    subplot(2, 2, 1)
+#    imshow(data1)
+#    title('fixed ' + basename(zfs[0]))
+#
+#    subplot(2, 2, 2)
 
-from glob import glob
+#    imshow(data2)
+#    title('moving ' + basename(zfs[i]))
+#
+#    subplot(2, 2, 3)
+#    imshow(data2_moved)
+#    title(basename(zfs[i] + '_registered'))
+#
+#    subplot(2, 2, 4)
+#    imshow(data1 + data2_moved)
+#    title('registered and fixed together')
 
-zfs = glob(join(dname, '*.tif'))
-
-f1 = join(dname, zfs[0])
-
-z_size = 4
-threshold = 300
-data1 = imread(f1)
-data1 = mask_zebrafish(data1, threshold)
+def rotate_at_point(img, angle, pivot):
+    padX = [img.shape[1] - pivot[0], pivot[0]]
+    padY = [img.shape[0] - pivot[1], pivot[1]]
+    imgP = np.pad(img, [padY, padX], 'constant')
+    imgR = rotate(imgP, angle, reshape=False)
+    return imgR[padY[0]: -padY[1], padX[0]: -padX[1]]
 
 
-for i in range(1, len(zfs)):
+def build_template(data1, rot_angle=10):
+    # input should be already masked
 
-    f2 = join(dname, zfs[i])
+    fine_template = rotate(data1, rot_angle, reshape=False)
 
-    data2 = imread(f2)
-    data2 = mask_zebrafish(data2, threshold)
+    fts = fine_template.shape
 
-    data2_moved = ssd_rotate_and_center(data1, data2)
+    # notice that I am calculating center of mass for one figure
+    cmass = center_of_mass(fine_template > 0)
 
-    figure()
+    fine_template2 = shift(fine_template, [fts[0]/2 - cmass[0],
+                           fts[1]/2 - cmass[1]])
 
-    subplot(2, 2, 1)
-    imshow(data1)
-    title('fixed ' + basename(zfs[0]))
+    return fine_template2
 
-    subplot(2, 2, 2)
-    imshow(data2)
-    title('moving ' + basename(zfs[i]))
 
-    subplot(2, 2, 3)
-    imshow(data2_moved)
-    title(basename(zfs[i] + '_registered'))
+if __name__ == '__main__':
 
-    subplot(2, 2, 4)
-    imshow(data1 + data2_moved)
-    title('registered and fixed together')
+    static = sys.argv[1]
+    # moving = sys.argv[2]
+    print(static)
 
-    savefig(str(i) + '.png')
+    # home = expanduser('~')
+    # dname = join(home, 'Data', 'zebrafish')
+
+    dname = sys.argv[2]
+    print(dname)
+
+    zfs = glob(join(dname, '*.tif'))
+
+    print(zfs)
+
+    f1 = static  # join(dname, static)
+
+    z_size = 4
+    threshold = 300
+    data1 = imread(f1)
+    data1 = mask_zebrafish(data1, threshold)
+
+    # imwrite(basename(zfs[0]), data1)
+    #    data1_interp = np.interp(
+    #            data1,
+    #            [data1.min(), np.percentile(data1[data1 > 0], 95)],
+    #            [0, 255])
+    # imshow(data1_interp)
+
+    for i in range(1, len(zfs)):
+
+        f2 = join(dname, zfs[i])
+        print('Processing ' + f2 + '..')
+
+        data2 = imread(f2)
+        data2 = mask_zebrafish(data2, threshold)
+
+        data2_moved = ssd_rotate_and_center(data1, data2)
+
+        # TODO add left and right search -- along the second axis
+
+        print('Saving ' +  basename(zfs[i]) + '_aligned.tiff')
+        imwrite(basename(zfs[i]) + '_aligned.tiff', data2_moved)
+
