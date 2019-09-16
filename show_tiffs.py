@@ -10,7 +10,7 @@ import numpy as np
 from glob import glob
 from os.path import expanduser, join
 from imageio import imread, imwrite
-from dipy.viz import actor, window, widget
+from dipy.viz import actor, window, ui, app
 
 from dipy.align.imaffine import transform_centers_of_mass
 
@@ -19,7 +19,15 @@ from os.path import basename
 from zebrafish_alignment import mask_zebrafish
 
 
+
 def show_volume(vol, affine=np.eye(4), opacity=1.):
+
+    app.horizon(images=[(vol, affine)])
+
+
+
+
+def show_volume2(vol, affine=np.eye(4), opacity=1.):
     import vtk
     ren = window.Renderer()
 

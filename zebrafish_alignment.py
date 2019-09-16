@@ -8,7 +8,7 @@ import numpy as np
 from glob import glob
 from os.path import expanduser, join
 from imageio import imread, imwrite
-from dipy.viz import actor, window, widget
+from dipy.viz import actor, window, ui
 
 from dipy.align.imaffine import transform_centers_of_mass
 
@@ -109,22 +109,39 @@ def build_template(data1, rot_angle=10):
 
     return fine_template2
 
+wrng_msg = """
+Wrong number of inputs'
+Provide template image, directory of tif images to align, output folder'
+For example:
+python zebrafish_alignment.py static.tif DMSO out_dir
+"""
+
 
 if __name__ == '__main__':
+
+    """ Provide template image, directory of tif images to align, output folder
+    """
+
+    if len(sys.argv == 4):
+       print(wrng_msg)
 
     static = sys.argv[1]
     # moving = sys.argv[2]
     print(static)
-
-    # home = expanduser('~')
-    # dname = join(home, 'Data', 'zebrafish')
 
     dname = sys.argv[2]
     print(dname)
 
     zfs = glob(join(dname, '*.tif'))
 
-    print(zfs)
+    print('Processing images from')
+    for z in zfs:
+        print(z)
+
+    dout = sys.argv[3]
+
+    print('Results will be saved in folder')
+    print(dout)
 
     f1 = static  # join(dname, static)
 
@@ -150,8 +167,8 @@ if __name__ == '__main__':
 
         data2_moved = ssd_rotate_and_center(data1, data2)
 
-        # TODO add left and right search -- along the second axis
+        print('Saving ' +  join(dout, basename(zfs[i]) + '_aligned.tiff'))
+        imwrite(join(dout, basename(zfs[i]) + '_aligned.tiff'), data2_moved)
 
-        print('Saving ' +  basename(zfs[i]) + '_aligned.tiff')
-        imwrite(basename(zfs[i]) + '_aligned.tiff', data2_moved)
+
 
