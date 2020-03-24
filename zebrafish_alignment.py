@@ -12,7 +12,7 @@ from dipy.viz import actor, window, ui
 
 from dipy.align.imaffine import transform_centers_of_mass
 
-from scipy.ndimage.interpolation import rotate, shift, affine_transform
+from scipy.ndimage.interpolation import rotate, shift, affine_transform, zoom
 from scipy.ndimage.measurements import center_of_mass
 from os.path import basename
 
@@ -42,6 +42,40 @@ def ssd_rotate_and_center(static, moving):
     angles = range(0, 360)
 
     for theta in angles:
+        if theta % 10 == 0:
+            print(theta)
+
+        movingn = rotate(moving, theta, reshape=False)
+        c_of_mass = transform_centers_of_mass(static, None,
+                                              movingn, None)
+        moved = c_of_mass.transform(movingn)
+        ssds.append(np.sum((moved - static) ** 2))
+
+    best_ssd = np.argmin(ssds)
+    print(np.min(ssds))
+    print(angles[best_ssd])
+    movingn = rotate(moving, angles[best_ssd], reshape=False)
+    c_of_mass = transform_centers_of_mass(static, None,
+                                          movingn, None)
+    moved = c_of_mass.transform(movingn)
+
+    return moved
+
+
+def ssd_rotate_and_center_2(static, moving):
+
+    # figure()
+    # title('Before registration')
+    # imshow(static + moving)
+
+    # TODO I can try rotating the image around its center of mass and then
+    # apply the c_of_mass transform
+
+    ssds = []
+    angles = range(0, 360)
+
+    for theta in angles:
+        print(theta)
 
         movingn = rotate(moving, theta, reshape=False)
         c_of_mass = transform_centers_of_mass(static, None,
@@ -116,6 +150,14 @@ For example:
 python zebrafish_alignment.py static.tif DMSO out_dir
 """
 
+def rgb2gray(rgb):
+
+    r, g, b = rgb[:, :, 0], rgb[:, : , 1], rgb[: , :, 2]
+    gray = 0.2989 * r + 0.5870 * g + 0.1140 * b
+
+    return gray
+
+
 
 if __name__ == '__main__':
 
@@ -143,31 +185,32 @@ if __name__ == '__main__':
     print('Results will be saved in folder')
     print(dout)
 
-    f1 = static  # join(dname, static)
+    f1 = static
 
     z_size = 4
     threshold = 300
     data1 = imread(f1)
-    data1 = mask_zebrafish(data1, threshold)
 
-    # imwrite(basename(zfs[0]), data1)
-    #    data1_interp = np.interp(
-    #            data1,
-    #            [data1.min(), np.percentile(data1[data1 > 0], 95)],
-    #            [0, 255])
-    # imshow(data1_interp)
+    data1 = rgb2gray(data1)
+
+    data1 = mask_zebrafish(data1, threshold)
 
     for i in range(1, len(zfs)):
 
         f2 = join(dname, zfs[i])
+
         print('Processing ' + f2 + '..')
 
         data2 = imread(f2)
+
+        data2 = rgb2gray(data2)
+
         data2 = mask_zebrafish(data2, threshold)
 
         data2_moved = ssd_rotate_and_center(data1, data2)
 
         print('Saving ' +  join(dout, basename(zfs[i]) + '_aligned.tiff'))
+
         imwrite(join(dout, basename(zfs[i]) + '_aligned.tiff'), data2_moved)
 
 
