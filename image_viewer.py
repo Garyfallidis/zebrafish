@@ -13,6 +13,7 @@ class ImageViewer(QMainWindow):
         self.scaleFactor = 0.0
 
         self.imageLabel = QLabel()
+        
         self.imageLabel.setBackgroundRole(QPalette.Base)
         self.imageLabel.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self.imageLabel.setScaledContents(True)
@@ -26,7 +27,7 @@ class ImageViewer(QMainWindow):
         self.createMenus()
 
         self.setWindowTitle("Image Viewer")
-        self.resize(500, 400)
+        self.resize(800, 800)
 
     def open(self):
         fileName, _ = QFileDialog.getOpenFileName(self, "Open File",
@@ -44,7 +45,7 @@ class ImageViewer(QMainWindow):
             self.printAct.setEnabled(True)
             self.fitToWindowAct.setEnabled(True)
             self.updateActions()
-
+            
             if not self.fitToWindowAct.isChecked():
                 self.imageLabel.adjustSize()
 

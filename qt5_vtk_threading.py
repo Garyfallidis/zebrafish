@@ -62,10 +62,11 @@ if __name__ == "__main__":
     window = MainWindow()
 
     arr = np.random.rand(10)
-    t1 = threading.Thread(target=calc_square, args=(arr, window))
+    # t1 = threading.Thread(target=calc_square, args=(arr, window))
 
-    t1.start()
+    # t1.start()
 
     sys.exit(app.exec_())
 
-    t1.join()
+    # t1.join()
+    
